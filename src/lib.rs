@@ -5,7 +5,7 @@ use std::{alloc::{Allocator, Global}, marker::PhantomData};
 
 // TODO: Store a std::mem::Layout instead
 
-pub struct ErasedVec<A: Allocator> {
+pub struct ErasedVec<A: Allocator = Global> {
 	element_type: std::any::TypeId,
 	element_size: usize,
 	element_align: usize,
