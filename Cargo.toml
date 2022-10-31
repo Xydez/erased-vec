@@ -1,0 +1,12 @@
+[package]
+name = "erased-vec"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+criterion = "0.4"
+rand = "0.8"
+
+[[bench]]
+name = "benchmark"
+harness = false
