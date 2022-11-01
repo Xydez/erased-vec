@@ -16,16 +16,19 @@ pub struct ErasedVec<A: Allocator = Global> {
 }
 
 impl ErasedVec<Global> {
+	/// Creates a new [ErasedVec] of type `T` with the [Global] allocator
 	pub fn new<T: 'static>() -> ErasedVec<Global> {
 		ErasedVec::new_in::<T>(Global)
 	}
 
+	/// Creates a new [ErasedVec] of type `T` and capacity `capacity` with the [Global] allocator
 	pub fn with_capacity<T: 'static>(capacity: usize) -> ErasedVec<Global> {
 		ErasedVec::with_capacity_in::<T>(capacity, Global)
 	}
 }
 
 impl<A: Allocator> ErasedVec<A> {
+	/// Creates a new [ErasedVec] of type `T` with `allocator` as the allocator
 	pub fn new_in<T: 'static>(allocator: A) -> ErasedVec<A> {
 		ErasedVec {
 			element_type: std::any::TypeId::of::<T>(),
@@ -38,6 +41,7 @@ impl<A: Allocator> ErasedVec<A> {
 		}
 	}
 
+	/// Creates a new [ErasedVec] of type `T` and capacity `capacity` with `allocator` as the allocator
 	pub fn with_capacity_in<T: 'static>(capacity: usize, allocator: A) -> ErasedVec<A> {
 		let layout = std::alloc::Layout::array::<T>(capacity).unwrap();
 		let mem = allocator.allocate(layout).unwrap();
@@ -53,7 +57,7 @@ impl<A: Allocator> ErasedVec<A> {
 		}
 	}
 
-	/// Grow the vec into memory double the size
+	/// Grow the vec into a memory block of double the size
 	pub fn grow(&mut self) {
 		if self.cap == 0 {
 			// If the ErasedVec is empty we allocate space for one element and return
@@ -84,6 +88,9 @@ impl<A: Allocator> ErasedVec<A> {
 		self.cap = 2 * self.cap;
 	}
 
+	/// Push a new element of type `T` onto the end of the [ErasedVec]
+	///
+	/// Panics if `T` is not the same type as the [ErasedVec] was initialized with
 	pub fn push<T: 'static>(&mut self, value: T) {
 		assert_eq!(std::any::TypeId::of::<T>(), self.element_type);
 
@@ -105,16 +112,32 @@ impl<A: Allocator> ErasedVec<A> {
 		self.len += 1;
 	}
 
+	/// Removes the element at the top of the [ErasedVec]
+	///
+	/// Panics if the [ErasedVec] is empty
 	pub fn pop(&mut self) {
 		assert!(self.len > 0, "ErasedVec#pop() must not be called on an empty vector");
 
 		self.len -= 1;
 	}
 
+	/// Returns the length of the [ErasedVec] in elements
+	///
+	/// If you want the size in bytes, use [size] instead
 	pub fn len(&self) -> usize {
 		self.len
 	}
 
+	/// Returns the size of the [ErasedVec] in bytes
+	///
+	/// If you want the length in elements, use [len] instead
+	pub fn size(&self) -> usize {
+		self.len * self.element_size
+	}
+
+	/// Get a reference to the element at the specified index
+	///
+	/// Panics if `T` is not the same type as the [ErasedVec] was initialized with
 	pub fn get<T: 'static>(&self, index: usize) -> Option<&T> {
 		assert_eq!(std::any::TypeId::of::<T>(), self.element_type);
 
@@ -127,8 +150,23 @@ impl<A: Allocator> ErasedVec<A> {
 		}
 	}
 
+	/// Get a mutable reference to the element at the specified index
+	///
+	/// Panics if `T` is not the same type as the [ErasedVec] was initialized with
+	pub fn get_mut<T: 'static>(&mut self, index: usize) -> Option<&mut T> {
+		assert_eq!(std::any::TypeId::of::<T>(), self.element_type);
+
+		if index >= self.len {
+			None
+		} else {
+			unsafe {
+				Some(&mut *(self.ptr.offset(index as isize * self.element_size as isize) as *mut u8 as *mut T))
+			}
+		}
+	}
+
 	/// Erases an element from the ErasedVec
-	/// 
+	///
 	/// If you want the removed element, use [remove] instead
 	pub fn erase(&mut self, index: usize) {
 		if index < self.len - 1 {
@@ -141,7 +179,7 @@ impl<A: Allocator> ErasedVec<A> {
 	}
 
 	/// Removes an element from the ErasedVec
-	/// 
+	///
 	/// If you don't need the removed element, use [erase] instead
 	pub fn remove<T: 'static>(&mut self, index: usize) -> T {
 		assert!(index < self.len);
@@ -156,6 +194,9 @@ impl<A: Allocator> ErasedVec<A> {
 		val
 	}
 
+	/// Copies the [ErasedVec] into a [Vec] of `T`
+	///
+	/// Panics if `T` is not the same type as the [ErasedVec] was initialized with
 	pub fn into_vec<T: 'static>(&self) -> Vec<T> {
 		assert_eq!(std::any::TypeId::of::<T>(), self.element_type);
 
@@ -173,6 +214,9 @@ impl<A: Allocator> ErasedVec<A> {
 }
 
 impl<'a, A: Allocator> ErasedVec<A> {
+	/// Creates an iterator over this [ErasedVec]
+	///
+	/// Panics if `T` is not the same type as the [ErasedVec] was initialized with
 	pub fn iter<T: 'static>(&'a self) -> IntoIter<'a, A, T> {
 		IntoIter {
 			i: 0,
@@ -329,6 +373,22 @@ mod tests {
 		vec.push(foo.clone());
 
 		assert_eq!(vec.remove::<Foo>(0), foo);
+	}
+
+	#[test]
+	fn test_get_mut() {
+		let mut vec = ErasedVec::new::<Foo>();
+
+		let foo1 = Foo { u8: 0x24, u16: 0x6f86, u32: 0xf4a342f4, u64: 0x7a7285f4f8fbd5eb, usize: 0x7d2772139c20fd39 };
+		let foo2 = Foo { u8: 0xa9, u16: 0x68e4, u32: 0xb8cb2579, u64: 0x12c933706af64ccd, usize: 0x7d2772139c20fd39 };
+
+		vec.push(foo1);
+
+		if let Some(element) = vec.get_mut::<Foo>(0) {
+			*element = foo2.clone();
+		}
+
+		assert_eq!(vec.get::<Foo>(0), Some(&foo2));
 	}
 
 	#[test]
